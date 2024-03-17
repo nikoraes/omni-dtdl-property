@@ -1,1 +1,1 @@
-from .extension import *
+from .dtdl_properties_extension import *
