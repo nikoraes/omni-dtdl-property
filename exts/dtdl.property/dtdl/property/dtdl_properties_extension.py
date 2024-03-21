@@ -1,7 +1,10 @@
+from glob import glob
+import json
 import omni.ext
 import omni.ui as ui
 from pxr import Sdf, Usd, UsdGeom, Gf
 from omni.kit.property.usd.prim_selection_payload import PrimSelectionPayload
+from dtdl.property.dtdl_model_modelrepo import DtdlExtendedModelData
 
 
 class DtdlPropertyExtension(omni.ext.IExt):
@@ -9,6 +12,7 @@ class DtdlPropertyExtension(omni.ext.IExt):
         super().__init__()
         self._registered = False
         self._menu_items = []
+        self._model_repo: dict[str, DtdlExtendedModelData] = {}
 
     def on_startup(self, ext_id):
         self._register_widget()
@@ -25,13 +29,13 @@ class DtdlPropertyExtension(omni.ext.IExt):
 
         property_window = property_window_ext.get_window()
         if property_window:
-            # register ExampleAttributeWidget class with property window.
+            # register DtdlAttributeWidget class with property window.
             # you can have multple of these but must have to be different scheme names
             # but always "prim" or "layer" type
             #   "prim" when a prim is selected
             #   "layer" only seen when root layer is selected in layer window
             property_window.register_widget(
-                "prim", "dtdl_properties", DtdlAttributeWidget()
+                "prim", "dtdl_properties", DtdlAttributeWidget(self._model_repo)
             )
             self._registered = True
             # ordering of property widget is controlled by omni.kit.property.bundle
@@ -69,6 +73,26 @@ class DtdlPropertyExtension(omni.ext.IExt):
             PrimPathWidget.remove_button_menu_entry(item)
 
         self._menu_items = None
+
+    def _load_dtdl_model_repo(self):
+        """
+        load all the DTDL models from the specified folder
+        """
+        # recursively load all the models from the folder
+        models = []
+        for file in glob("c:/users/nraes//**/*.json", recursive=True):
+            with open(file) as f:
+                model_json = json.load(f)
+                if (
+                    "@context" in model_json
+                    and "@id" in model_json
+                    and "@type" in model_json
+                    and model_json["@type"] == "Interface"
+                ):
+                    models.append(model_json)
+        # Generate all extended model data and store it in a dictionary
+        for model in models:
+            self._model_repo[model["@id"]] = DtdlExtendedModelData(model, models)
 
     @staticmethod
     def prim_is_valid_type(objects: dict) -> bool:

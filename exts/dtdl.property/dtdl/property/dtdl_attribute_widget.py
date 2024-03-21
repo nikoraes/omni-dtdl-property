@@ -1,18 +1,20 @@
-from typing import List
+from copy import copy
 from omni.kit.property.usd.usd_property_widget import (
     UsdPropertiesWidget,
     UsdPropertyUiEntry,
 )
-import copy
 import carb
 import omni.ui as ui
 import omni.usd
 from pxr import Usd, Sdf, Vt, Gf, UsdGeom, Trace
+from dtdl.property.dtdl_model_modelrepo import DtdlExtendedModelData
 
 
 class DtdlAttributeWidget(UsdPropertiesWidget):
-    def __init__(self):
+
+    def __init__(self, model_repo: dict[str, DtdlExtendedModelData]):
         super().__init__(title="DTDL Properties", collapsed=False)
+        self._model_repo = model_repo
         self._attribute_list = [
             "dtmi:com:arcadis:test:name",
             "dtmi:com:arcadis:test:boolean",
@@ -51,11 +53,11 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
             prims.append(prim)
 
         # get list of attributes and build a dictonary to make logic simpler later
-        self._placeholer_list = {}
+        self._placeholder_list = {}
         for prim in prims:
             for key in self._attribute_list:
                 if prim.GetAttribute(key):
-                    self._placeholer_list[key] = True
+                    self._placeholder_list[key] = True
 
         return True
 
@@ -103,7 +105,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         # so resetting hovercraftWheels is weird as it gets reset to "True" and not one of the
         # item in the list.
 
-        if "dtmi:com:arcadis:test:name" not in self._placeholer_list:
+        if "dtmi:com:arcadis:test:name" not in self._placeholder_list:
             attrs.append(
                 UsdPropertyUiEntry(
                     "dtmi:com:arcadis:test:name",
@@ -112,7 +114,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
                     Usd.Attribute,
                 )
             )
-        if "dtmi:com:arcadis:test:boolean" not in self._placeholer_list:
+        if "dtmi:com:arcadis:test:boolean" not in self._placeholder_list:
             attrs.append(
                 UsdPropertyUiEntry(
                     "dtmi:com:arcadis:test:boolean",
@@ -127,7 +129,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
 
         # remove any unwanted attrs (all of the Xform & Mesh
         # attributes as we don't want to display them in the widget)
-        for attr in copy.copy(attrs):
+        for attr in copy(attrs):
             if attr.attr_name not in self._attribute_list:
                 attrs.remove(attr)
 

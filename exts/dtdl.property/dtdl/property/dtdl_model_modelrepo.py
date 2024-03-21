@@ -1,5 +1,4 @@
-from typing import List
-
+from pxr import Usd, Sdf
 from omni.kit.property.usd.usd_property_widget import UsdPropertyUiEntry
 
 
@@ -21,35 +20,54 @@ class DtdlProperty:
 class DtdlExtendedModelData:
     def __init__(self, model: object, all_models: list[object]):
         self.model = model
-        self.bases: List[str] = []
-        self.properties: List[UsdPropertyUiEntry] = []
+        self.bases: list[str] = []
+        self.properties: list[UsdPropertyUiEntry] = []
+        self._add_model_contents_recursive(model["@id"], all_models)
 
     def _add_model_contents_recursive(self, model_id: str, all_models: list[object]):
         model = next(m for m in all_models if m["@id"] == model_id)
-        self._model_repo[model["@id"]] = {["model"]: model, ["properties"]: []}
         if "contents" in model:
             if model["contents"] is object:
                 model["contents"] = [model["contents"]]
             for c in model["contents"]:
                 if c["@type"] == "Property" or "Property" in c["@type"]:
-                    self._model_repo[model["@id"]]["properties"].append(c)
+                    property_entry = self._usd_property_from_dtdl_property(c, model_id)
+                    self.properties.append(property_entry)
         if "extends" in model:
             if isinstance(model["extends"], list):
                 for base in model["extends"]:
+                    if base not in self.bases:
+                        self.bases.append(base)
                     self._add_model_contents_recursive(base, all_models)
             else:
+                if model["extends"] not in self.bases:
+                    self.bases.append(model["extends"])
                 self._add_model_contents_recursive(model["extends"], all_models)
 
     def _usd_property_from_dtdl_property(
         self, dtdl_property: object, modelId: str
     ) -> UsdPropertyUiEntry:
-        id: str = dtdl_property["@id"] if "@id" in dtdl_property else ""
+        id: str = (
+            dtdl_property["@id"]
+            if "@id" in dtdl_property
+            else "{}:_contents:{};{}".format(
+                modelId.split(";")[0], dtdl_property["name"], modelId.split(";")[1]
+            )
+        )
+        displayName: str = (
+            (
+                dtdl_property["displayName"]["en"]
+                if "en" in dtdl_property["displayName"]
+                else dtdl_property["displayName"]
+            )
+            if "displayName" in dtdl_property
+            else dtdl_property["name"]
+        )
         return UsdPropertyUiEntry(
-            "dtmi:com:arcadis:test:boolean",
-            "",
+            id,
+            displayName,
             {
                 Sdf.PrimSpec.TypeNameKey: "bool",
-                "customData": {"default": False},
             },
             Usd.Attribute,
         )
@@ -61,4 +79,6 @@ class DtdlModelRepository:
     """
 
     def __init__(self, models: list[object]):
-        self._model_repo: dict[str, list[UsdPropertyUiEntry]] = []
+        self._model_repo: dict[str, DtdlExtendedModelData] = []
+        for model in models:
+            self._model_repo[model["@id"]] = DtdlExtendedModelData(model, models)

@@ -26,7 +26,6 @@ class Test(omni.kit.test.AsyncTestCase):
         result = dtdl.property.some_public_function(4)
         self.assertEqual(result, 256)
 
-
     @omni.kit.test.omni_test_registry(guid="4626d574-659f-4a85-8958-9fa8588fbce3")
     async def test_window_button(self):
 
