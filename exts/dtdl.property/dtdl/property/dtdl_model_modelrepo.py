@@ -71,14 +71,3 @@ class DtdlExtendedModelData:
             },
             Usd.Attribute,
         )
-
-
-class DtdlModelRepository:
-    """
-    Stores the USD attribute definitions per DTDL model for easy retrieval
-    """
-
-    def __init__(self, models: list[object]):
-        self._model_repo: dict[str, DtdlExtendedModelData] = []
-        for model in models:
-            self._model_repo[model["@id"]] = DtdlExtendedModelData(model, models)

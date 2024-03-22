@@ -9,16 +9,15 @@ import omni.usd
 from pxr import Usd, Sdf, Vt, Gf, UsdGeom, Trace
 from dtdl.property.dtdl_model_modelrepo import DtdlExtendedModelData
 
+model_id_attribute = "dtdl:modelId"
 
 class DtdlAttributeWidget(UsdPropertiesWidget):
 
     def __init__(self, model_repo: dict[str, DtdlExtendedModelData]):
         super().__init__(title="DTDL Properties", collapsed=False)
         self._model_repo = model_repo
-        self._attribute_list = [
-            "dtmi:com:arcadis:test:name",
-            "dtmi:com:arcadis:test:boolean",
-        ]
+        self._model_id = None
+        self._attribute_list = []
 
     def on_new_payload(self, payload):
         """

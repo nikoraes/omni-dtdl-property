@@ -80,7 +80,10 @@ class DtdlPropertyExtension(omni.ext.IExt):
         """
         # recursively load all the models from the folder
         models = []
-        for file in glob("c:/users/nraes//**/*.json", recursive=True):
+        for file in glob(
+            "C:/Users/NRaes/Dev/omni/dtdl-property/exts/dtdl.property/data/*.json",
+            recursive=True,
+        ):
             with open(file) as f:
                 model_json = json.load(f)
                 if (

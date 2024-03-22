@@ -1,0 +1,28 @@
+{
+  "@context": "dtmi:dtdl:context;3",
+  "@id": "dtmi:com:example:test;1",
+  "@type": "Interface",
+  "displayName": "test model",
+  "contents": [
+    {
+      "@type": "Telemetry",
+      "name": "temperature",
+      "displayName": "Temperature",
+      "schema": "double"
+    },
+    {
+      "@type": "Property",
+      "name": "humidity",
+      "displayName": {
+        "en": "Humidity"
+      },
+      "schema": "string"
+    },
+    {
+      "@type": "Property",
+      "name": "deviceStatus",
+      "displayName": "Device Status",
+      "schema": "string"
+    }
+  ]
+}
