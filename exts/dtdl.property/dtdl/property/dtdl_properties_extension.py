@@ -27,6 +27,7 @@ class DtdlPropertyExtension(omni.ext.IExt):
         import omni.kit.window.property as property_window_ext
         from .dtdl_attribute_widget import DtdlAttributeWidget
 
+        self._load_dtdl_model_repo()
         property_window = property_window_ext.get_window()
         if property_window:
             # register DtdlAttributeWidget class with property window.
@@ -78,8 +79,9 @@ class DtdlPropertyExtension(omni.ext.IExt):
         """
         load all the DTDL models from the specified folder
         """
-        # recursively load all the models from the folder
+        self._model_repo = {}
         models = []
+        # recursively load all the models from the folder
         for file in glob(
             "C:/Users/NRaes/Dev/omni/dtdl-property/exts/dtdl.property/data/*.json",
             recursive=True,

@@ -7,17 +7,17 @@ import carb
 import omni.ui as ui
 import omni.usd
 from pxr import Usd, Sdf, Vt, Gf, UsdGeom, Trace
-from dtdl.property.dtdl_model_modelrepo import DtdlExtendedModelData
+from dtdl.property.dtdl_model_modelrepo import DtdlExtendedModelData, DtdlProperty
 
-model_id_attribute = "dtdl:modelId"
+model_id_attr_name = "dtdl:modelId"
+
 
 class DtdlAttributeWidget(UsdPropertiesWidget):
 
     def __init__(self, model_repo: dict[str, DtdlExtendedModelData]):
-        super().__init__(title="DTDL Properties", collapsed=False)
+        super().__init__(title="DTDL", collapsed=False)
         self._model_repo = model_repo
-        self._model_id = None
-        self._attribute_list = []
+        self._attribute_list: list[DtdlProperty] = []
 
     def on_new_payload(self, payload):
         """
@@ -52,11 +52,16 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
             prims.append(prim)
 
         # get list of attributes and build a dictonary to make logic simpler later
-        self._placeholder_list = {}
+        self._attribute_list = []
         for prim in prims:
-            for key in self._attribute_list:
-                if prim.GetAttribute(key):
-                    self._placeholder_list[key] = True
+            model_id_attr = prim.GetAttribute(model_id_attr_name)
+            model_id = model_id_attr.Get()
+            if model_id:
+                if model_id in self._model_repo:
+                    model_data = self._model_repo[model_id]
+                    for prop in model_data.properties:
+                        if not any(p.id == prop.id for p in self._attribute_list):
+                            self._attribute_list.append(prop)
 
         return True
 
@@ -100,42 +105,33 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         # This is also the reason for _placeholer_list as we don't want to add placeholders if valid
         # attribute already exists
 
-        # NOTE: As these are not part of the schema and "default value" logic is not finialized yet
-        # so resetting hovercraftWheels is weird as it gets reset to "True" and not one of the
-        # item in the list.
+        # Add the model Id attribute
+        attrs.append(
+            UsdPropertyUiEntry(
+                model_id_attr_name,
+                "Model",
+                {Sdf.PrimSpec.TypeNameKey: "string"},
+                Usd.Attribute,
+            )
+        )
 
-        if "dtmi:com:arcadis:test:name" not in self._placeholder_list:
-            attrs.append(
-                UsdPropertyUiEntry(
-                    "dtmi:com:arcadis:test:name",
-                    "Name",
-                    {Sdf.PrimSpec.TypeNameKey: "string"},
-                    Usd.Attribute,
-                )
-            )
-        if "dtmi:com:arcadis:test:boolean" not in self._placeholder_list:
-            attrs.append(
-                UsdPropertyUiEntry(
-                    "dtmi:com:arcadis:test:boolean",
-                    "",
-                    {
-                        Sdf.PrimSpec.TypeNameKey: "bool",
-                        "customData": {"default": False},
-                    },
-                    Usd.Attribute,
-                )
-            )
+        # Add all attributes for the models for the selected prims
+        for prop in self._attribute_list:
+            attrs.append(prop.to_usd_property_ui_entry())
 
         # remove any unwanted attrs (all of the Xform & Mesh
         # attributes as we don't want to display them in the widget)
         for attr in copy(attrs):
-            if attr.attr_name not in self._attribute_list:
+            if (attr.attr_name is not model_id_attr_name) and (
+                attr.attr_name not in [p.id for p in self._attribute_list]
+            ):
                 attrs.remove(attr)
 
         # custom UI attributes
         frame = CustomLayoutFrame(hide_extra=False)
         with frame:
-            CustomLayoutProperty("dtmi:com:arcadis:test:name", "Name")
-            CustomLayoutProperty("dtmi:com:arcadis:test:boolean", "Boolean")
+            CustomLayoutProperty(model_id_attr_name, "Model")
+            for prop in self._attribute_list:
+                prop.to_custom_layout_property()
 
         return frame.apply(attrs)
