@@ -58,15 +58,16 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
 
         for prim in prims:
             model_id_attr = prim.GetAttribute(model_id_attr_name)
-            self._noplaceholder_list[model_id_attr_name] = True
-            model_id = model_id_attr.Get()
-            if model_id:
-                if model_id in self._model_repo:
-                    model_data = self._model_repo[model_id]
-                    self._dtdl_property_list = model_data.properties
-                    for prop in model_data.properties:
-                        if prim.GetAttribute(prop.id):
-                            self._noplaceholder_list[prop.id] = True
+            if model_id_attr:
+                self._noplaceholder_list[model_id_attr_name] = True
+                model_id = model_id_attr.Get()
+                if model_id:
+                    if model_id in self._model_repo:
+                        model_data = self._model_repo[model_id]
+                        self._dtdl_property_list = model_data.properties
+                        for prop in model_data.properties:
+                            if prim.GetAttribute(prop.id):
+                                self._noplaceholder_list[prop.id] = True
 
         return True
 
@@ -117,7 +118,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
                     model_id_attr_name,
                     "Model",
                     {Sdf.PrimSpec.TypeNameKey: "string"},
-                    Usd.Property,
+                    Usd.Attribute,
                 )
             )
 
@@ -157,7 +158,9 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
 
         # check for attribute changed or created by +add menu as widget refresh is required
         for path in notice.GetChangedInfoOnlyPaths():
-            if path.name in [p.id for p in self._dtdl_property_list]:
+            if (path.name is model_id_attr_name) or (
+                path.name in [p.id for p in self._dtdl_property_list]
+            ):
                 # on_new_payload will not be called so need to update _placeholer_list
                 # to prevent placeholders & real attributes being displayed
                 self._noplaceholder_list[path.name] = True

@@ -36,7 +36,7 @@ class DtdlProperty:
             {
                 Sdf.PrimSpec.TypeNameKey: dtdl_schema_to_usd_schema(self.schema),
             },
-            Usd.Property,
+            Usd.Attribute,
         )
 
 
