@@ -17,7 +17,8 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
     def __init__(self, model_repo: dict[str, DtdlExtendedModelData]):
         super().__init__(title="DTDL", collapsed=False)
         self._model_repo = model_repo
-        self._attribute_list: list[DtdlProperty] = []
+        self._dtdl_property_list: list[DtdlProperty] = []
+        self._noplaceholder_list: dict[str, bool] = {}
 
     def on_new_payload(self, payload):
         """
@@ -52,16 +53,20 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
             prims.append(prim)
 
         # get list of attributes and build a dictonary to make logic simpler later
-        self._attribute_list = []
+        self._dtdl_property_list = []
+        self._noplaceholder_list = {}
+
         for prim in prims:
             model_id_attr = prim.GetAttribute(model_id_attr_name)
+            self._noplaceholder_list[model_id_attr_name] = True
             model_id = model_id_attr.Get()
             if model_id:
                 if model_id in self._model_repo:
                     model_data = self._model_repo[model_id]
+                    self._dtdl_property_list = model_data.properties
                     for prop in model_data.properties:
-                        if not any(p.id == prop.id for p in self._attribute_list):
-                            self._attribute_list.append(prop)
+                        if prim.GetAttribute(prop.id):
+                            self._noplaceholder_list[prop.id] = True
 
         return True
 
@@ -105,25 +110,27 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         # This is also the reason for _placeholer_list as we don't want to add placeholders if valid
         # attribute already exists
 
-        # Add the model Id attribute
-        attrs.append(
-            UsdPropertyUiEntry(
-                model_id_attr_name,
-                "Model",
-                {Sdf.PrimSpec.TypeNameKey: "string"},
-                Usd.Attribute,
+        # Add the model Id attribute placeholder if it doesn't exist yet
+        if model_id_attr_name not in self._noplaceholder_list:
+            attrs.append(
+                UsdPropertyUiEntry(
+                    model_id_attr_name,
+                    "Model",
+                    {Sdf.PrimSpec.TypeNameKey: "string"},
+                    Usd.Property,
+                )
             )
-        )
 
         # Add all attributes for the models for the selected prims
-        for prop in self._attribute_list:
-            attrs.append(prop.to_usd_property_ui_entry())
+        for prop in self._dtdl_property_list:
+            if prop.id not in self._noplaceholder_list:
+                attrs.append(prop.to_usd_property_ui_entry())
 
         # remove any unwanted attrs (all of the Xform & Mesh
         # attributes as we don't want to display them in the widget)
         for attr in copy(attrs):
             if (attr.attr_name is not model_id_attr_name) and (
-                attr.attr_name not in [p.id for p in self._attribute_list]
+                attr.attr_name not in [p.id for p in self._dtdl_property_list]
             ):
                 attrs.remove(attr)
 
@@ -131,7 +138,27 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         frame = CustomLayoutFrame(hide_extra=False)
         with frame:
             CustomLayoutProperty(model_id_attr_name, "Model")
-            for prop in self._attribute_list:
+            for prop in self._dtdl_property_list:
                 prop.to_custom_layout_property()
 
         return frame.apply(attrs)
+
+    @Trace.TraceFunction
+    def _on_usd_changed(self, notice, stage):
+        """
+        called when UsdPropertiesWidget needs to inform of a property change
+        NOTE: This is a Tf.Notice.Register(Usd.Notice.ObjectsChanged) callback, so is time sensitive function
+              Keep code in this function to a minimum as heavy work can slow down kit
+        """
+        if stage != self._payload.get_stage():
+            return
+
+        super()._on_usd_changed(notice=notice, stage=stage)
+
+        # check for attribute changed or created by +add menu as widget refresh is required
+        for path in notice.GetChangedInfoOnlyPaths():
+            if path.name in [p.id for p in self._dtdl_property_list]:
+                # on_new_payload will not be called so need to update _placeholer_list
+                # to prevent placeholders & real attributes being displayed
+                self._noplaceholder_list[path.name] = True
+                self.request_rebuild()

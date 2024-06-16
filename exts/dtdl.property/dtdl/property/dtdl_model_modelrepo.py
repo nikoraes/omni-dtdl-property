@@ -27,32 +27,29 @@ class DtdlProperty:
         self.schema = data["schema"]
 
     def to_custom_layout_property(self):
-        return CustomLayoutProperty(self.name, self.display_name)
+        return CustomLayoutProperty(self.id, self.display_name)
 
     def to_usd_property_ui_entry(self):
         return UsdPropertyUiEntry(
-            self.name,
+            self.id,
             "Properties",
             {
                 Sdf.PrimSpec.TypeNameKey: dtdl_schema_to_usd_schema(self.schema),
             },
-            Usd.Attribute,
+            Usd.Property,
         )
 
 
 def dtdl_schema_to_usd_schema(dtdl_schema: str) -> str:
-    if dtdl_schema == "string":
-        return "string"
-    if dtdl_schema == "boolean":
-        return "bool"
-    if dtdl_schema == "integer":
-        return "int"
-    if dtdl_schema == "long":
-        return "int64"
-    if dtdl_schema == "double":
-        return "double"
-    if dtdl_schema == "float":
-        return "float"
+    match dtdl_schema:
+        case "boolean":
+            return "bool"
+        case "integer":
+            return "int"
+        case "long":
+            return "int64"
+        case _:
+            return dtdl_schema
 
 
 class DtdlExtendedModelData:

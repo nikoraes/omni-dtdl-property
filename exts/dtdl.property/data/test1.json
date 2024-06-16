@@ -16,13 +16,13 @@
       "displayName": {
         "en": "Humidity"
       },
-      "schema": "string"
+      "schema": "double"
     },
     {
       "@type": "Property",
       "name": "deviceStatus",
       "displayName": "Device Status",
-      "schema": "string"
+      "schema": "boolean"
     }
   ]
 }

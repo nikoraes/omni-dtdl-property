@@ -1,0 +1,20 @@
+{
+  "@context": "dtmi:dtdl:context;3",
+  "@id": "dtmi:com:example:test;2",
+  "@type": "Interface",
+  "displayName": "test model 2",
+  "contents": [
+    {
+      "@type": "Property",
+      "name": "speed",
+      "displayName": "Speed",
+      "schema": "double"
+    },
+    {
+      "@type": "Property",
+      "name": "temperature",
+      "displayName": "Temperature",
+      "schema": "double"
+    }
+  ]
+}
