@@ -1,4 +1,5 @@
-# Python Extension Example [dtdl.property]
+# DTDL Property Widget [dtdl.property]
 
-This is an example of pure python Kit extension. It is intended to be copied and serve as a template to create new extensions.
+This widget allows to load DTDL models (Digital Twin Definition Language) and use them as native USD attributes for Prims. Properties are saved as raw USD attributes.
 
+Note: Currently only properties with primitive schemas are supported. Relationships, Enums, ... will be added in the future.

@@ -1,24 +1,23 @@
-from collections import defaultdict
 from copy import copy
 from glob import glob
 import json
+from os import path
 from omni.kit.property.usd.usd_property_widget import (
     UsdPropertiesWidget,
     UsdPropertyUiEntry,
 )
+
 import carb
 import carb.settings
 import omni.ui as ui
 import omni.kit.app
 import omni.usd
 from pxr import Usd, Sdf, Vt, Gf, UsdGeom, Trace
-from dtdl.property.dtdl_model_modelrepo import DtdlExtendedModelData, DtdlProperty
+from .dtdl_model_modelrepo import DtdlExtendedModelData, DtdlProperty
+from .dtdl_property_extension import DTDL_PATH_SETTING, MODEL_ID_ATTR_NAME
 
 
 class DtdlAttributeWidget(UsdPropertiesWidget):
-
-    MODEL_ID_ATTR_NAME = "dtdl:modelId"
-    DTDL_PATH_SETTING = "/persistent/exts/dtdl.property/dtdlPath"
 
     def __init__(self):
         super().__init__(title="DTDL", collapsed=False)
@@ -32,19 +31,18 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
 
         self._load_dtdl_model_repo()
 
+        # TODO: watch settings for changes and reload models if path changes
+        # we may also need to watch the path itself to detect updates to the models
+
     def _init_settings(self):
         self._dtdl_path = omni.kit.app.SettingChangeSubscription(
-            DtdlAttributeWidget.DTDL_PATH_SETTING,
+            DTDL_PATH_SETTING,
             lambda *_: self._on_settings_change(),
         )
 
     def _read_settings(self):
         settings = carb.settings.get_settings()
-        # self._dtdl_path = settings.get(DTDL_PATH_SETTING)
-        # TODO add some UI to settings
-        self._dtdl_path = (
-            "C:/Users/NRaes/Dev/omni/dtdl-property/exts/dtdl.property/data/*.json"
-        )
+        self._dtdl_path = path.join(settings.get(DTDL_PATH_SETTING), "*.json")
 
     def _on_settings_change(self):
         self._read_settings()
@@ -92,7 +90,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         """
         self._dtdl_property_list = []
         for prim in prims:
-            model_id_attr = prim.GetAttribute(DtdlAttributeWidget.MODEL_ID_ATTR_NAME)
+            model_id_attr = prim.GetAttribute(MODEL_ID_ATTR_NAME)
             if model_id_attr:
                 model_id = model_id_attr.Get()
                 if model_id:
@@ -169,10 +167,10 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         # attribute already exists
 
         # Add the model Id attribute placeholder if it doesn't exist yet
-        # if DtdlAttributeWidget.MODEL_ID_ATTR_NAME not in self._noplaceholder_list:
+        # if MODEL_ID_ATTR_NAME not in self._noplaceholder_list:
         attrs.append(
             UsdPropertyUiEntry(
-                DtdlAttributeWidget.MODEL_ID_ATTR_NAME,
+                MODEL_ID_ATTR_NAME,
                 "Model",
                 {
                     Sdf.PrimSpec.TypeNameKey: "token",
@@ -194,7 +192,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         # remove any unwanted attrs (all of the Xform & Mesh
         # attributes as we don't want to display them in the widget)
         for attr in copy(attrs):
-            if (attr.attr_name is not DtdlAttributeWidget.MODEL_ID_ATTR_NAME) and (
+            if (attr.attr_name is not MODEL_ID_ATTR_NAME) and (
                 attr.attr_name not in [p.id for p in self._dtdl_property_list]
             ):
                 attrs.remove(attr)
@@ -202,7 +200,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         # custom UI attributes
         frame = CustomLayoutFrame(hide_extra=False)
         with frame:
-            CustomLayoutProperty(DtdlAttributeWidget.MODEL_ID_ATTR_NAME, "Model")
+            CustomLayoutProperty(MODEL_ID_ATTR_NAME, "Model")
             for prop in self._dtdl_property_list:
                 prop.to_custom_layout_property()
 
@@ -224,13 +222,13 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
 
         # check for attribute changed or created by +add menu as widget refresh is required
         paths = notice.GetChangedInfoOnlyPaths()
-        if DtdlAttributeWidget.MODEL_ID_ATTR_NAME in [path.name for path in paths]:
+        if MODEL_ID_ATTR_NAME in [path.name for path in paths]:
             prims = self._get_valid_prims()
             self._build_dtdl_property_list(prims)
             self.request_rebuild()
 
         """ for path in notice.GetChangedInfoOnlyPaths():
-            if path.name is DtdlAttributeWidget.MODEL_ID_ATTR_NAME:
+            if path.name is MODEL_ID_ATTR_NAME:
 
                 self._dtdl_property_list = []
                 self.reset_models()
@@ -253,10 +251,10 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         #             prims.append(prim)
         #         for prim in prims:
         #             model_id_attr = prim.GetAttribute(
-        #                 DtdlAttributeWidget.MODEL_ID_ATTR_NAME
+        #                 MODEL_ID_ATTR_NAME
         #             )
         #             if model_id_attr:
-        #                 # self._noplaceholder_list[DtdlAttributeWidget.MODEL_ID_ATTR_NAME] = True
+        #                 # self._noplaceholder_list[MODEL_ID_ATTR_NAME] = True
         #                 model_id = model_id_attr.Get()
         #                 if model_id:
         #                     if model_id in self._model_repo:

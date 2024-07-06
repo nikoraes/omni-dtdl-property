@@ -1,27 +1,44 @@
-from glob import glob
-import json
 import omni.ext
-import omni.ui as ui
-from pxr import Sdf, Usd, UsdGeom, Gf
-from omni.kit.property.usd.prim_selection_payload import PrimSelectionPayload
-from dtdl.property.dtdl_model_modelrepo import DtdlExtendedModelData
+import omni.kit.app
+from omni.kit.window.preferences import PERSISTENT_SETTINGS_PREFIX
+from .dtdl_model_modelrepo import DtdlExtendedModelData
+
+MODEL_ID_ATTR_NAME = "dtdl:modelId"
+DTDL_PATH_SETTING_ID = "dtdl_path"
+DTDL_PATH_SETTING = (
+    PERSISTENT_SETTINGS_PREFIX + "/exts/dtdl.property/" + DTDL_PATH_SETTING_ID
+)
 
 
 class DtdlPropertyExtension(omni.ext.IExt):
     def __init__(self):
         super().__init__()
         self._registered = False
-        self._menu_items = []
+        # self._menu_items = []
         self._model_repo: dict[str, DtdlExtendedModelData] = {}
 
     def on_startup(self, ext_id):
         self._register_widget()
-        self._register_add_menus()
+        # self._register_add_menus()
+
+        self._preferences = None
+        self._hooks = []
+
+        manager = omni.kit.app.get_app().get_extension_manager()
+        self._hooks.append(
+            manager.subscribe_to_extension_enable(
+                on_enable_fn=lambda _: self._register_preferences(),
+                on_disable_fn=lambda _: self._unregister_preferences(),
+                ext_name="omni.kit.window.preferences",
+                hook_name="omni.kit.property.usd omni.kit.window.preferences listener",
+            )
+        )
 
     def on_shutdown(self):
-        self._unregister_add_menus()
+        # self._unregister_add_menus()
         if self._registered:
             self._unregister_widget()
+        self._unregister_preferences()
 
     def _register_widget(self):
         import omni.kit.window.property as property_window_ext
@@ -49,51 +66,67 @@ class DtdlPropertyExtension(omni.ext.IExt):
             property_window.unregister_widget("prim", "dtdl_properties")
             self._registered = False
 
-    def _register_add_menus(self):
-        from omni.kit.property.usd import PrimPathWidget
+    def _register_preferences(self):
+        from omni.kit.window.preferences import register_page
 
-        # add menus to property window path/+add and context menus +add submenu.
-        # show_fn: controls when option will be shown, IE when selected prim(s) are Xform or Mesh.
-        # onclick_fn: is called when user selects menu item.
-        # self._menu_items.append(
-        #     PrimPathWidget.add_button_menu_entry(
-        #         "Example/Hovercraft Wheels",
-        #         show_fn=DtdlPropertyExtension.prim_is_example_type,
-        #         onclick_fn=DtdlPropertyExtension.click_add_hovercraft_wheels,
-        #     )
-        # )
+        from .dtdl_property_preferences_page import DtdlPropertyPreferences
 
-        # In future, maybe add menu items to change DTDl model
+        self._preferences = omni.kit.window.preferences.register_page(
+            DtdlPropertyPreferences()
+        )
 
-    def _unregister_add_menus(self):
-        from omni.kit.property.usd import PrimPathWidget
+    def _unregister_preferences(self):
+        if self._preferences:
+            import omni.kit.window.preferences
 
-        # remove menus to property window path/+add and context menus +add submenu.
-        for item in self._menu_items:
-            PrimPathWidget.remove_button_menu_entry(item)
+            omni.kit.window.preferences.unregister_page(self._preferences)
+            self._preferences = None
 
-        self._menu_items = None
+    # def _register_add_menus(self):
+    #     from omni.kit.property.usd import PrimPathWidget
 
-    @staticmethod
-    def prim_is_valid_type(objects: dict) -> bool:
-        """
-        checks if prims are required type
-        """
-        if "stage" not in objects or "prim_list" not in objects or not objects["stage"]:
-            return False
+    # add menus to property window path/+add and context menus +add submenu.
+    # show_fn: controls when option will be shown, IE when selected prim(s) are Xform or Mesh.
+    # onclick_fn: is called when user selects menu item.
+    # self._menu_items.append(
+    #     PrimPathWidget.add_button_menu_entry(
+    #         "Example/Hovercraft Wheels",
+    #         show_fn=DtdlPropertyExtension.prim_is_example_type,
+    #         onclick_fn=DtdlPropertyExtension.click_add_hovercraft_wheels,
+    #     )
+    # )
 
-        stage = objects["stage"]
-        if not stage:
-            return False
+    # In future, maybe add menu items to change DTDl model
 
-        prim_list = objects["prim_list"]
-        for path in prim_list:
-            if isinstance(path, Usd.Prim):
-                prim = path
-            else:
-                prim = stage.GetPrimAtPath(path)
-            if prim:
-                if not (prim.IsA(UsdGeom.Xform) or prim.IsA(UsdGeom.Mesh)):
-                    return False
+    # def _unregister_add_menus(self):
+    #     from omni.kit.property.usd import PrimPathWidget
 
-        return len(prim_list) > 0
+    #     # remove menus to property window path/+add and context menus +add submenu.
+    #     for item in self._menu_items:
+    #         PrimPathWidget.remove_button_menu_entry(item)
+
+    #     self._menu_items = None
+
+    # @staticmethod
+    # def prim_is_valid_type(objects: dict) -> bool:
+    #     """
+    #     checks if prims are required type
+    #     """
+    #     if "stage" not in objects or "prim_list" not in objects or not objects["stage"]:
+    #         return False
+
+    #     stage = objects["stage"]
+    #     if not stage:
+    #         return False
+
+    #     prim_list = objects["prim_list"]
+    #     for path in prim_list:
+    #         if isinstance(path, Usd.Prim):
+    #             prim = path
+    #         else:
+    #             prim = stage.GetPrimAtPath(path)
+    #         if prim:
+    #             if not (prim.IsA(UsdGeom.Xform) or prim.IsA(UsdGeom.Mesh)):
+    #                 return False
+
+    #     return len(prim_list) > 0

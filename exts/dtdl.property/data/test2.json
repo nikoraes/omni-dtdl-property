@@ -20,6 +20,9 @@
       "@type": "Property",
       "name": "boolean",
       "displayName": "Boolean",
+      "description": {
+        "en": "Test description for a boolean property"
+      },
       "schema": "boolean"
     }
   ]
