@@ -1,3 +1,4 @@
+from collections import defaultdict
 from copy import copy
 from glob import glob
 import json
@@ -74,6 +75,33 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         for model in models:
             self._model_repo[model["@id"]] = DtdlExtendedModelData(model, models)
 
+    def _get_valid_prims(self):
+        """
+        Get all the valid prims from the selected prims
+        """
+        prims = []
+        for prim_path in self._payload:
+            prim = self._get_prim(prim_path)
+            if prim and (prim.IsA(UsdGeom.Xform) or prim.IsA(UsdGeom.Mesh)):
+                prims.append(prim)
+        return prims
+
+    def _build_dtdl_property_list(self, prims):
+        """
+        Build a list of DTDL properties for the selected prims
+        """
+        self._dtdl_property_list = []
+        for prim in prims:
+            model_id_attr = prim.GetAttribute(DtdlAttributeWidget.MODEL_ID_ATTR_NAME)
+            if model_id_attr:
+                model_id = model_id_attr.Get()
+                if model_id:
+                    if model_id in self._model_repo:
+                        model_data = self._model_repo[model_id]
+                        for prop in model_data.properties:
+                            if prop not in self._dtdl_property_list:
+                                self._dtdl_property_list.append(prop)
+
     def on_new_payload(self, payload):
         """
         Called when a new payload is delivered. PropertyWidget can take this opportunity to update its ui models,
@@ -99,33 +127,13 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
             return False
 
         # check is all selected prims are relevent class/types
-        prims = []
-        for prim_path in self._payload:
-            prim = self._get_prim(prim_path)
-            if not prim or not (prim.IsA(UsdGeom.Xform) or prim.IsA(UsdGeom.Mesh)):
-                return False
-            prims.append(prim)
+        prims = self._get_valid_prims()
 
         # if model repo not loaded, don't show
         if self._model_repo is None:
             return False
 
-        # get list of attributes and build a dictonary to make logic simpler later
-        self._dtdl_property_list = []
-        # self._noplaceholder_list = {}
-
-        for prim in prims:
-            model_id_attr = prim.GetAttribute(DtdlAttributeWidget.MODEL_ID_ATTR_NAME)
-            if model_id_attr:
-                # self._noplaceholder_list[DtdlAttributeWidget.MODEL_ID_ATTR_NAME] = True
-                model_id = model_id_attr.Get()
-                if model_id:
-                    if model_id in self._model_repo:
-                        model_data = self._model_repo[model_id]
-                        self._dtdl_property_list = model_data.properties
-                        # for prop in model_data.properties:
-                        #     if prim.GetAttribute(prop.id):
-                        #         self._noplaceholder_list[prop.id] = True
+        self._build_dtdl_property_list(prims)
 
         return payload is not None and len(payload) > 0
 
@@ -210,14 +218,23 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         if stage != self._payload.get_stage():
             return
 
-        self._dtdl_property_list = []
-
+        # self.reset_models()
+        # self.request_rebuild()
         super()._on_usd_changed(notice=notice, stage=stage)
 
         # check for attribute changed or created by +add menu as widget refresh is required
-        for path in notice.GetChangedInfoOnlyPaths():
+        paths = notice.GetChangedInfoOnlyPaths()
+        if DtdlAttributeWidget.MODEL_ID_ATTR_NAME in [path.name for path in paths]:
+            prims = self._get_valid_prims()
+            self._build_dtdl_property_list(prims)
+            self.request_rebuild()
+
+        """ for path in notice.GetChangedInfoOnlyPaths():
             if path.name is DtdlAttributeWidget.MODEL_ID_ATTR_NAME:
-                self.request_rebuild()
+
+                self._dtdl_property_list = []
+                self.reset_models()
+                self.request_rebuild() """
 
         # self.request_rebuild()
         # self.build_items()
