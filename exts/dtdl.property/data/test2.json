@@ -15,6 +15,12 @@
       "name": "temperature",
       "displayName": "Temperature",
       "schema": "double"
+    },
+    {
+      "@type": "Property",
+      "name": "boolean",
+      "displayName": "Boolean",
+      "schema": "boolean"
     }
   ]
 }

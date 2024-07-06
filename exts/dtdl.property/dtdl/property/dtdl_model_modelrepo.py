@@ -7,13 +7,7 @@ class DtdlProperty:
 
     def __init__(self, data: dict, model_id: str):
         # The property id is used as attr_name in the USD schema
-        self.id = (
-            data["@id"]
-            if "@id" in data
-            else "{}:_contents:{};{}".format(
-                model_id.split(";")[0], data["name"], model_id.split(";")[1]
-            )
-        )
+        self.id = "dtdl:{}".format(data["name"])
         self.name = data["name"]
         self.display_name = (
             (
@@ -24,17 +18,30 @@ class DtdlProperty:
             if "displayName" in data
             else data["name"]
         )
+        self.description = (
+            (
+                data["description"]["en"]
+                if "en" in data["description"]
+                else data["description"]
+            )
+            if "description" in data
+            else None
+        )
         self.schema = data["schema"]
 
     def to_custom_layout_property(self):
         return CustomLayoutProperty(self.id, self.display_name)
 
     def to_usd_property_ui_entry(self):
+        # TODO: enum, object, ...
         return UsdPropertyUiEntry(
             self.id,
             "Properties",
             {
                 Sdf.PrimSpec.TypeNameKey: dtdl_schema_to_usd_schema(self.schema),
+                Sdf.PrimSpec.DocumentationKey: {
+                    "documentation": self.description,
+                },
             },
             Usd.Attribute,
         )
