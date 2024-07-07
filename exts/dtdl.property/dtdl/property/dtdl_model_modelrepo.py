@@ -59,6 +59,7 @@ class DtdlProperty(DtdlContent):
                     self.schema
                 ),
                 Sdf.PrimSpec.DocumentationKey: self.description,
+                "customData": {"default": _get_default_by_schema(self.schema)},
             },
             Usd.Attribute,
         )
@@ -81,6 +82,7 @@ class DtdlTelemetry(DtdlContent):
                     self.schema
                 ),
                 Sdf.PrimSpec.DocumentationKey: self.description,
+                "customData": {"default": _get_default_by_schema(self.schema)},
             },
             Usd.Attribute,
         )
@@ -119,6 +121,28 @@ def dtdl_primitive_schema_to_usd_schema(dtdl_schema: str) -> str:
             return "int64"
         case _:
             return dtdl_schema
+
+
+def _get_default_by_schema(schema: str) -> str:
+    """
+    Get the default value for a given schema. This is used to set the default value in the USD
+    schema.
+    """
+    match schema:
+        case "boolean":
+            return False
+        case "integer":
+            return 0
+        case "long":
+            return 0
+        case "float":
+            return 0.0
+        case "double":
+            return 0.0
+        case "string":
+            return ""
+        case _:
+            return ""
 
 
 class DtdlExtendedModelData:

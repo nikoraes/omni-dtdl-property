@@ -40,16 +40,28 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         # Start the dtdl folder watcher in a separate thread
         self._dtdl_watcher_thread = threading.Thread(target=self._watch_dtdl_path)
         self._dtdl_watcher_thread.start()
+        # Settings subscription
+        self._setting_sub
 
     def __del__(self):
         self._stop_watching()
 
     def _subscribe_settings(self):
         """Subscribe to settings changes to reload the DTDL models when the path changes"""
-        self._dtdl_path = omni.kit.app.SettingChangeSubscription(
-            DTDL_PATH_SETTING,
-            self._on_settings_change,
+
+        def on_change():
+            self._on_settings_change()
+
+        self._setting_sub = (
+            carb.settings.get_settings().subscribe_to_node_change_events(
+                DTDL_PATH_SETTING, on_change
+            )
         )
+        # self._dtdl_path = omni.kit.app.SettingChangeSubscription(
+        #     DTDL_PATH_SETTING,
+        #     self._on_settings_change,
+        # )
+        # TODO: This isn't triggering ... figure out why
 
     def _read_settings(self):
         """Read the settings to get the path to the DTDL models"""
@@ -65,6 +77,8 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         """Stop the dtdl folder watcher thread"""
         self._stop_event.set()
         self._dtdl_watcher_thread.join()
+        """Stop the settings change subscription"""
+        carb.settings.get_settings().unsubscribe_to_change_events(self._setting_sub)
 
     def _get_dtdl_file_list(self):
         # the file entries, but not the absolute path
@@ -154,7 +168,8 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         for prim in stage.Traverse():
             # Get the model id attribute
             model_id_attr = prim.GetAttribute(MODEL_ID_ATTR_NAME)
-            if model_id_attr.GetMetadata("allowedTokens") is not None:
+            current_allowed_tokens = model_id_attr.GetMetadata("allowedTokens")
+            if current_allowed_tokens is not None:
                 model_id_attr.SetMetadata("allowedTokens", allowed_tokens)
                 # v = model_id_attr.Get()
                 # allowed_tokens = model_id_attr.GetMetadata("allowedTokens")
