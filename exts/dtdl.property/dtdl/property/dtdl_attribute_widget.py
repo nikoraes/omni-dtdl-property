@@ -22,15 +22,18 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
     def __init__(self):
         super().__init__(title="DTDL", collapsed=False)
         self._dtdl_path: str = None
+        self._subscribe_settings()
+        self._read_settings()
 
         self._dtdl_model_repo: dict[str, DtdlExtendedModelData] = {}
         self._dtdl_contents_list: list[DtdlContent] = []
         # self._noplaceholder_list: dict[str, bool] = {}
 
-        self._subscribe_settings()
-        self._read_settings()
-
-        self._dtdl_file_list: list[omni.client.ListEntry] = []
+        # holds the file entries, but not the absolute path
+        # self._dtdl_file_list: list[omni.client.ListEntry] = []
+        # holds the absolute path to the files
+        # self._dtdl_file_urls: list[str] = []
+        (self._dtdl_file_list, self._dtdl_file_urls) = self._get_dtdl_file_list()
         self._load_dtdl_model_repo()
 
         self._stop_event = threading.Event()
@@ -45,7 +48,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         """Subscribe to settings changes to reload the DTDL models when the path changes"""
         self._dtdl_path = omni.kit.app.SettingChangeSubscription(
             DTDL_PATH_SETTING,
-            lambda *_: self._on_settings_change(),
+            self._on_settings_change,
         )
 
     def _read_settings(self):
@@ -63,13 +66,44 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         self._stop_event.set()
         self._dtdl_watcher_thread.join()
 
+    def _get_dtdl_file_list(self):
+        # the file entries, but not the absolute path
+        dtdl_file_list: list[omni.client.ListEntry] = []
+        # the absolute path to the files
+        dtdl_file_urls: list[str] = []
+
+        def recursive_list_files(folder):
+            (result, file_list) = omni.client.list(folder)
+            for list_entry in file_list:
+                if (list_entry.flags & omni.client.ItemFlags.READABLE_FILE) and (
+                    list_entry.relative_path.endswith(".json")
+                ):
+                    dtdl_file_list.append(list_entry)
+                    dtdl_file_urls.append(path.join(folder, list_entry.relative_path))
+                elif list_entry.flags & omni.client.ItemFlags.CAN_HAVE_CHILDREN:
+                    recursive_list_files(path.join(folder, list_entry.relative_path))
+
+        recursive_list_files(self._dtdl_path)
+
+        return (dtdl_file_list, dtdl_file_urls)
+
     def _watch_dtdl_path(self):
         """
         Watch the DTDL path for changes by periodically checking the filtered list
         of files and their updated timestamps in the folder
         """
         while not self._stop_event.is_set():
-            (result, file_list) = omni.client.list(self._dtdl_path)
+            # (result, full_file_list) = omni.client.list(self._dtdl_path)
+            # file_list = [
+            #     entry for entry in full_file_list if ".json" in entry.relative_path
+            # ]
+            (file_list, file_urls) = self._get_dtdl_file_list()
+            if len(self._dtdl_file_list) == 0:
+                self._dtdl_file_list = file_list
+                self._dtdl_file_urls = file_urls
+                self._load_dtdl_model_repo()
+                time.sleep(20)
+                continue
             new_files = [
                 list_entry
                 for list_entry in file_list
@@ -84,6 +118,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
             ]
             if len(new_files) > 0 or len(deleted_files) > 0:
                 self._dtdl_file_list = file_list
+                self._dtdl_file_urls = file_urls
                 self._load_dtdl_model_repo()
                 time.sleep(20)
                 continue
@@ -96,10 +131,37 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
                 )
                 if modified_time > existing_entry.modified_time:
                     self._dtdl_file_list = file_list
+                    self._dtdl_file_urls = file_urls
                     self._load_dtdl_model_repo()
                     time.sleep(20)
                     continue
             time.sleep(10)
+
+    def _set_modelid_allowed_tokens(self):
+        """
+        When the model repo changes, we need to traverse all prims that have the dtdm:modelId attribute
+        and update the allowed tokens for the attribute
+        """
+        # Prepare allowed tokens Tuple
+        allowed_tokens = Vt.TokenArray(
+            len(self._dtdl_model_repo) + 1,
+            ("", *self._dtdl_model_repo.keys()),
+        )
+        # Get current stage
+        usd_context = omni.usd.get_context()
+        stage = usd_context.get_stage()
+        # Traverse all prims in the stage
+        for prim in stage.Traverse():
+            # Get the model id attribute
+            model_id_attr = prim.GetAttribute(MODEL_ID_ATTR_NAME)
+            if model_id_attr.GetMetadata("allowedTokens") is not None:
+                model_id_attr.SetMetadata("allowedTokens", allowed_tokens)
+                # v = model_id_attr.Get()
+                # allowed_tokens = model_id_attr.GetMetadata("allowedTokens")
+                # # n = model_id_attr.GetAllMetadata()
+                # # o = model_id_attr.GetCustomData()
+                # # Set the allowed tokens
+                # model_id_attr.Get()
 
     def _load_dtdl_model_repo(self):
         """
@@ -109,15 +171,10 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         self._dtdl_model_repo = {}
         models = []
 
-        # Recursively load all the models from the folder (can be Nucleus or local)
-        (result, file_list) = omni.client.list(self._dtdl_path)
-        for list_entry in [
-            entry for entry in file_list if ".json" in entry.relative_path
-        ]:
-            if ".json" in list_entry.relative_path:
-                file_url = path.join(self._dtdl_path, list_entry.relative_path)
-                (result, version, content) = omni.client.read_file(file_url)
-                model_json = json.loads(memoryview(content).tobytes())
+        for file_url in self._dtdl_file_urls:
+            (result, version, content) = omni.client.read_file(file_url)
+            model_json = json.loads(memoryview(content).tobytes())
+            if isinstance(model_json, dict):
                 if (
                     "@context" in model_json
                     and "@id" in model_json
@@ -125,6 +182,16 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
                     and model_json["@type"] == "Interface"
                 ):
                     models.append(model_json)
+            # if the json is an array, we need to iterate over the array
+            elif isinstance(model_json, list):
+                for model in model_json:
+                    if (
+                        "@context" in model
+                        and "@id" in model
+                        and "@type" in model
+                        and model["@type"] == "Interface"
+                    ):
+                        models.append(model)
         # Generate all extended model data and store it in a dictionary
         for model in models:
             self._dtdl_model_repo[model["@id"]] = DtdlExtendedModelData(model, models)
@@ -132,6 +199,9 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         # prims = self._get_valid_prims()
         # self._build_dtdl_contents_list(prims)
         # self.request_rebuild()
+
+        # Update the allowed tokens for the model id attribute in each prim
+        self._set_modelid_allowed_tokens()
 
         return self._dtdl_model_repo
 
