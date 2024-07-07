@@ -23,7 +23,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         super().__init__(title="DTDL", collapsed=False)
         self._dtdl_path: str = None
 
-        self._model_repo: dict[str, DtdlExtendedModelData] = {}
+        self._dtdl_model_repo: dict[str, DtdlExtendedModelData] = {}
         self._dtdl_contents_list: list[DtdlContent] = []
         # self._noplaceholder_list: dict[str, bool] = {}
 
@@ -59,6 +59,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         self.request_rebuild()
 
     def _stop_watching(self):
+        """Stop the dtdl folder watcher thread"""
         self._stop_event.set()
         self._dtdl_watcher_thread.join()
 
@@ -105,7 +106,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         Load all the DTDL models from the specified folder. All (extended) models are stored in a dictionary
         with the model id as the key. The extended model data also includes the properties of the super classes.
         """
-        self._model_repo = {}
+        self._dtdl_model_repo = {}
         models = []
 
         # Recursively load all the models from the folder (can be Nucleus or local)
@@ -126,15 +127,21 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
                     models.append(model_json)
         # Generate all extended model data and store it in a dictionary
         for model in models:
-            self._model_repo[model["@id"]] = DtdlExtendedModelData(model, models)
+            self._dtdl_model_repo[model["@id"]] = DtdlExtendedModelData(model, models)
         # Rebuild the UI
-        self.request_rebuild()
+        # prims = self._get_valid_prims()
+        # self._build_dtdl_contents_list(prims)
+        # self.request_rebuild()
+
+        return self._dtdl_model_repo
 
     def _get_valid_prims(self):
         """
         Get all the valid prims from the selected prims
         """
         prims = []
+        if not self._payload:
+            return prims
         for prim_path in self._payload:
             prim = self._get_prim(prim_path)
             if prim and (prim.IsA(UsdGeom.Xform) or prim.IsA(UsdGeom.Mesh)):
@@ -151,8 +158,8 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
             if model_id_attr:
                 model_id = model_id_attr.Get()
                 if model_id:
-                    if model_id in self._model_repo:
-                        model_data = self._model_repo[model_id]
+                    if model_id in self._dtdl_model_repo:
+                        model_data = self._dtdl_model_repo[model_id]
                         for prop in model_data.properties:
                             if prop.id not in [p.id for p in self._dtdl_contents_list]:
                                 self._dtdl_contents_list.append(prop)
@@ -164,6 +171,8 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
                         for rel in model_data.relationships:
                             if rel.id not in [p.id for p in self._dtdl_contents_list]:
                                 self._dtdl_contents_list.append(rel)
+
+        return self._dtdl_contents_list
 
     def on_new_payload(self, payload):
         """
@@ -193,7 +202,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         prims = self._get_valid_prims()
 
         # if model repo not loaded, don't show
-        if self._model_repo is None:
+        if self._dtdl_model_repo is None:
             return False
 
         self._build_dtdl_contents_list(prims)
@@ -242,8 +251,8 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
                 {
                     Sdf.PrimSpec.TypeNameKey: "token",
                     "allowedTokens": Vt.TokenArray(
-                        3,
-                        ("", "dtmi:com:example:test;1", "dtmi:com:example:test;2"),
+                        len(self._dtdl_model_repo) + 1,
+                        ("", *self._dtdl_model_repo.keys()),
                     ),
                     "customData": {"default": ""},
                 },
