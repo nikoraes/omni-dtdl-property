@@ -1,67 +1,122 @@
-from copy import copy
-from glob import glob
 import json
+import time
+import threading
 from os import path
+import carb
+import carb.settings
+import omni.client
+import omni.kit.app
+import omni.usd
 from omni.kit.property.usd.usd_property_widget import (
     UsdPropertiesWidget,
     UsdPropertyUiEntry,
 )
-
-import carb
-import carb.settings
-import omni.ui as ui
-import omni.kit.app
-import omni.usd
-from pxr import Usd, Sdf, Vt, Gf, UsdGeom, Trace
-from .dtdl_model_modelrepo import DtdlExtendedModelData, DtdlProperty
+from pxr import Usd, Sdf, Vt, UsdGeom, Trace
+from .dtdl_model_modelrepo import DtdlExtendedModelData, DtdlContent
 from .dtdl_property_extension import DTDL_PATH_SETTING, MODEL_ID_ATTR_NAME
 
 
 class DtdlAttributeWidget(UsdPropertiesWidget):
+    """Widget to display DTDL properties in the property window"""
 
     def __init__(self):
         super().__init__(title="DTDL", collapsed=False)
+        self._dtdl_path: str = None
 
         self._model_repo: dict[str, DtdlExtendedModelData] = {}
-        self._dtdl_property_list: list[DtdlProperty] = []
+        self._dtdl_contents_list: list[DtdlContent] = []
         # self._noplaceholder_list: dict[str, bool] = {}
 
-        self._init_settings()
+        self._subscribe_settings()
         self._read_settings()
 
+        self._dtdl_file_list: list[omni.client.ListEntry] = []
         self._load_dtdl_model_repo()
 
-        # TODO: watch settings for changes and reload models if path changes
-        # we may also need to watch the path itself to detect updates to the models
+        self._stop_event = threading.Event()
+        # Start the dtdl folder watcher in a separate thread
+        self._dtdl_watcher_thread = threading.Thread(target=self._watch_dtdl_path)
+        self._dtdl_watcher_thread.start()
 
-    def _init_settings(self):
+    def __del__(self):
+        self._stop_watching()
+
+    def _subscribe_settings(self):
+        """Subscribe to settings changes to reload the DTDL models when the path changes"""
         self._dtdl_path = omni.kit.app.SettingChangeSubscription(
             DTDL_PATH_SETTING,
             lambda *_: self._on_settings_change(),
         )
 
     def _read_settings(self):
+        """Read the settings to get the path to the DTDL models"""
         settings = carb.settings.get_settings()
-        self._dtdl_path = path.join(settings.get(DTDL_PATH_SETTING), "*.json")
+        self._dtdl_path = settings.get(DTDL_PATH_SETTING)
 
     def _on_settings_change(self):
+        """Called when the settings change"""
         self._read_settings()
         self.request_rebuild()
 
+    def _stop_watching(self):
+        self._stop_event.set()
+        self._dtdl_watcher_thread.join()
+
+    def _watch_dtdl_path(self):
+        """
+        Watch the DTDL path for changes by periodically checking the filtered list
+        of files and their updated timestamps in the folder
+        """
+        while not self._stop_event.is_set():
+            (result, file_list) = omni.client.list(self._dtdl_path)
+            new_files = [
+                list_entry
+                for list_entry in file_list
+                if list_entry.relative_path
+                not in [entry.relative_path for entry in self._dtdl_file_list]
+            ]
+            deleted_files = [
+                entry
+                for entry in self._dtdl_file_list
+                if entry.relative_path
+                not in [list_entry.relative_path for list_entry in file_list]
+            ]
+            if len(new_files) > 0 or len(deleted_files) > 0:
+                self._dtdl_file_list = file_list
+                self._load_dtdl_model_repo()
+                time.sleep(20)
+                continue
+            for list_entry in new_files:
+                modified_time = list_entry.modified_time
+                existing_entry = next(
+                    entry
+                    for entry in self._dtdl_file_list
+                    if entry.relative_path == list_entry.relative_path
+                )
+                if modified_time > existing_entry.modified_time:
+                    self._dtdl_file_list = file_list
+                    self._load_dtdl_model_repo()
+                    time.sleep(20)
+                    continue
+            time.sleep(10)
+
     def _load_dtdl_model_repo(self):
         """
-        load all the DTDL models from the specified folder
+        Load all the DTDL models from the specified folder. All (extended) models are stored in a dictionary
+        with the model id as the key. The extended model data also includes the properties of the super classes.
         """
         self._model_repo = {}
         models = []
-        # recursively load all the models from the folder
-        # TODO: use omniverse file reader, so we can also support nucleus paths
-        for file in glob(
-            self._dtdl_path,
-            recursive=True,
-        ):
-            with open(file) as f:
-                model_json = json.load(f)
+
+        # Recursively load all the models from the folder (can be Nucleus or local)
+        (result, file_list) = omni.client.list(self._dtdl_path)
+        for list_entry in [
+            entry for entry in file_list if ".json" in entry.relative_path
+        ]:
+            if ".json" in list_entry.relative_path:
+                file_url = path.join(self._dtdl_path, list_entry.relative_path)
+                (result, version, content) = omni.client.read_file(file_url)
+                model_json = json.loads(memoryview(content).tobytes())
                 if (
                     "@context" in model_json
                     and "@id" in model_json
@@ -72,6 +127,8 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         # Generate all extended model data and store it in a dictionary
         for model in models:
             self._model_repo[model["@id"]] = DtdlExtendedModelData(model, models)
+        # Rebuild the UI
+        self.request_rebuild()
 
     def _get_valid_prims(self):
         """
@@ -84,11 +141,11 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
                 prims.append(prim)
         return prims
 
-    def _build_dtdl_property_list(self, prims):
+    def _build_dtdl_contents_list(self, prims):
         """
         Build a list of DTDL properties for the selected prims
         """
-        self._dtdl_property_list = []
+        self._dtdl_contents_list = []
         for prim in prims:
             model_id_attr = prim.GetAttribute(MODEL_ID_ATTR_NAME)
             if model_id_attr:
@@ -97,8 +154,16 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
                     if model_id in self._model_repo:
                         model_data = self._model_repo[model_id]
                         for prop in model_data.properties:
-                            if prop not in self._dtdl_property_list:
-                                self._dtdl_property_list.append(prop)
+                            if prop.id not in [p.id for p in self._dtdl_contents_list]:
+                                self._dtdl_contents_list.append(prop)
+                        for telemetry in model_data.telemetries:
+                            if telemetry.id not in [
+                                p.id for p in self._dtdl_contents_list
+                            ]:
+                                self._dtdl_contents_list.append(telemetry)
+                        for rel in model_data.relationships:
+                            if rel.id not in [p.id for p in self._dtdl_contents_list]:
+                                self._dtdl_contents_list.append(rel)
 
     def on_new_payload(self, payload):
         """
@@ -131,7 +196,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         if self._model_repo is None:
             return False
 
-        self._build_dtdl_property_list(prims)
+        self._build_dtdl_contents_list(prims)
 
         return payload is not None and len(payload) > 0
 
@@ -161,6 +226,8 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
             CustomLayoutProperty,
         )
 
+        ui_entries = []
+
         # As these attributes are not part of the schema, placeholders need to be added. These are not
         # part of the prim until the value is changed. They will be added via prim.CreateAttribute(
         # This is also the reason for _placeholer_list as we don't want to add placeholders if valid
@@ -168,7 +235,7 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
 
         # Add the model Id attribute placeholder if it doesn't exist yet
         # if MODEL_ID_ATTR_NAME not in self._noplaceholder_list:
-        attrs.append(
+        ui_entries.append(
             UsdPropertyUiEntry(
                 MODEL_ID_ATTR_NAME,
                 "Model",
@@ -185,26 +252,26 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         )
 
         # Add all attributes for the models for the selected prims
-        for prop in self._dtdl_property_list:
-            attrs.append(prop.to_usd_property_ui_entry())
+        for prop in self._dtdl_contents_list:
+            ui_entries.append(prop.to_usd_property_ui_entry())
             # if prop.id not in self._noplaceholder_list:
 
         # remove any unwanted attrs (all of the Xform & Mesh
         # attributes as we don't want to display them in the widget)
-        for attr in copy(attrs):
-            if (attr.attr_name is not MODEL_ID_ATTR_NAME) and (
-                attr.attr_name not in [p.id for p in self._dtdl_property_list]
-            ):
-                attrs.remove(attr)
+        # for attr in copy(attrs):
+        #     if (attr.attr_name is not MODEL_ID_ATTR_NAME) and (
+        #         attr.attr_name not in [p.id for p in self._dtdl_contents_list]
+        #     ):
+        #         attrs.remove(attr)
 
         # custom UI attributes
         frame = CustomLayoutFrame(hide_extra=False)
         with frame:
             CustomLayoutProperty(MODEL_ID_ATTR_NAME, "Model")
-            for prop in self._dtdl_property_list:
+            for prop in self._dtdl_contents_list:
                 prop.to_custom_layout_property()
 
-        return frame.apply(attrs)
+        return frame.apply(ui_entries)
 
     @Trace.TraceFunction
     def _on_usd_changed(self, notice, stage):
@@ -216,51 +283,11 @@ class DtdlAttributeWidget(UsdPropertiesWidget):
         if stage != self._payload.get_stage():
             return
 
-        # self.reset_models()
-        # self.request_rebuild()
         super()._on_usd_changed(notice=notice, stage=stage)
 
         # check for attribute changed or created by +add menu as widget refresh is required
         paths = notice.GetChangedInfoOnlyPaths()
-        if MODEL_ID_ATTR_NAME in [path.name for path in paths]:
+        if MODEL_ID_ATTR_NAME in [p.name for p in paths]:
             prims = self._get_valid_prims()
-            self._build_dtdl_property_list(prims)
+            self._build_dtdl_contents_list(prims)
             self.request_rebuild()
-
-        """ for path in notice.GetChangedInfoOnlyPaths():
-            if path.name is MODEL_ID_ATTR_NAME:
-
-                self._dtdl_property_list = []
-                self.reset_models()
-                self.request_rebuild() """
-
-        # self.request_rebuild()
-        # self.build_items()
-        # self.request_rebuild()
-
-        #         print("Model ID changed")
-        #         self._dtdl_property_list = []
-        #         # self._noplaceholder_list = {}
-        #         prims = []
-        #         for prim_path in self._payload:
-        #             prim = self._get_prim(prim_path)
-        #             if not prim or not (
-        #                 prim.IsA(UsdGeom.Xform) or prim.IsA(UsdGeom.Mesh)
-        #             ):
-        #                 return False
-        #             prims.append(prim)
-        #         for prim in prims:
-        #             model_id_attr = prim.GetAttribute(
-        #                 MODEL_ID_ATTR_NAME
-        #             )
-        #             if model_id_attr:
-        #                 # self._noplaceholder_list[MODEL_ID_ATTR_NAME] = True
-        #                 model_id = model_id_attr.Get()
-        #                 if model_id:
-        #                     if model_id in self._model_repo:
-        #                         model_data = self._model_repo[model_id]
-        #                         self._dtdl_property_list = model_data.properties
-        #         # self.reset()
-        #         # self.build_items()
-        #         self.request_rebuild()
-        #         # self.build_impl()

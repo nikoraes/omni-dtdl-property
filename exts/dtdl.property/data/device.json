@@ -1,6 +1,6 @@
 {
   "@context": "dtmi:dtdl:context;3",
-  "@id": "dtmi:com:example:test;1",
+  "@id": "dtmi:com:example:device;1",
   "@type": "Interface",
   "displayName": "test model",
   "contents": [

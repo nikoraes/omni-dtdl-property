@@ -36,21 +36,19 @@ class DtdlPropertyExtension(omni.ext.IExt):
 
     def on_shutdown(self):
         # self._unregister_add_menus()
+        self._hooks = None
         if self._registered:
             self._unregister_widget()
         self._unregister_preferences()
 
     def _register_widget(self):
+        """Register property widget with property window."""
         import omni.kit.window.property as property_window_ext
         from .dtdl_attribute_widget import DtdlAttributeWidget
 
         property_window = property_window_ext.get_window()
         if property_window:
             # register DtdlAttributeWidget class with property window.
-            # you can have multple of these but must have to be different scheme names
-            # but always "prim" or "layer" type
-            #   "prim" when a prim is selected
-            #   "layer" only seen when root layer is selected in layer window
             property_window.register_widget(
                 "prim", "dtdl_properties", DtdlAttributeWidget()
             )
@@ -58,6 +56,7 @@ class DtdlPropertyExtension(omni.ext.IExt):
             # ordering of property widget is controlled by omni.kit.property.bundle
 
     def _unregister_widget(self):
+        """Unregister property widget with property window."""
         import omni.kit.window.property as property_window_ext
 
         property_window = property_window_ext.get_window()
@@ -67,6 +66,7 @@ class DtdlPropertyExtension(omni.ext.IExt):
             self._registered = False
 
     def _register_preferences(self):
+        """Register preferences page for the extension."""
         from omni.kit.window.preferences import register_page
 
         from .dtdl_property_preferences_page import DtdlPropertyPreferences
@@ -76,6 +76,7 @@ class DtdlPropertyExtension(omni.ext.IExt):
         )
 
     def _unregister_preferences(self):
+        """Unregister preferences page for the extension."""
         if self._preferences:
             import omni.kit.window.preferences
 

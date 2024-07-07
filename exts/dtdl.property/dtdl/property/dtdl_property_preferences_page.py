@@ -8,6 +8,8 @@ from .dtdl_property_extension import DTDL_PATH_SETTING, DTDL_PATH_SETTING_ID
 
 
 class DtdlPropertyPreferences(PreferenceBuilder):
+    """Preferences page for the DTDL Property extension"""
+
     def __init__(self):
         super().__init__("Property Widgets")
         self._settings = carb.settings.get_settings()
@@ -15,6 +17,7 @@ class DtdlPropertyPreferences(PreferenceBuilder):
         self._dtdl_path_setting_widget = None
 
     def build(self):
+        """Build the preferences page"""
         with ui.VStack(height=0):
             with self.add_frame("DTDL Properties"):
                 with ui.VStack():

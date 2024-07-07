@@ -1,11 +1,13 @@
+from abc import abstractmethod
 from pxr import Usd, Sdf
 from omni.kit.property.usd.custom_layout_helper import CustomLayoutProperty
 from omni.kit.property.usd.usd_property_widget import UsdPropertyUiEntry
 
 
-class DtdlProperty:
+class DtdlContent:
+    """Base class to represent a DTDL content in the model repository"""
 
-    def __init__(self, data: dict, model_id: str):
+    def __init__(self, data: dict):
         # The property id is used as attr_name in the USD schema
         self.id = "dtdl:{}".format(data["name"])
         self.name = data["name"]
@@ -27,27 +29,87 @@ class DtdlProperty:
             if "description" in data
             else None
         )
-        self.schema = data["schema"]
+        if "schema" in data:
+            self.schema = data["schema"]
 
     def to_custom_layout_property(self):
+        """Converts the property to a CustomLayoutProperty object for the property window"""
         return CustomLayoutProperty(self.id, self.display_name)
 
+    @abstractmethod
     def to_usd_property_ui_entry(self):
+        """Converts the property to a UsdPropertyUiEntry object for the USD schema"""
+        pass
+
+
+class DtdlProperty(DtdlContent):
+    """Class to represent a DTDL property in the model repository"""
+
+    def __init__(self, data: dict):
+        super().__init__(data)
+
+    def to_usd_property_ui_entry(self):
+        """Converts the property to a UsdPropertyUiEntry object for the USD schema"""
         # TODO: enum, object, ...
         return UsdPropertyUiEntry(
             self.id,
             "Properties",
             {
-                Sdf.PrimSpec.TypeNameKey: dtdl_schema_to_usd_schema(self.schema),
-                Sdf.PrimSpec.DocumentationKey: {
-                    "documentation": self.description,
-                },
+                Sdf.PrimSpec.TypeNameKey: dtdl_primitive_schema_to_usd_schema(
+                    self.schema
+                ),
+                Sdf.PrimSpec.DocumentationKey: self.description,
             },
             Usd.Attribute,
         )
 
 
-def dtdl_schema_to_usd_schema(dtdl_schema: str) -> str:
+class DtdlTelemetry(DtdlContent):
+    """Class to represent a DTDL telemetry in the model repository"""
+
+    def __init__(self, data: dict):
+        super().__init__(data)
+
+    def to_usd_property_ui_entry(self):
+        """Converts the property to a UsdPropertyUiEntry object for the USD schema"""
+        # TODO: enum, object, ...
+        return UsdPropertyUiEntry(
+            self.id,
+            "Telemetry",
+            {
+                Sdf.PrimSpec.TypeNameKey: dtdl_primitive_schema_to_usd_schema(
+                    self.schema
+                ),
+                Sdf.PrimSpec.DocumentationKey: self.description,
+            },
+            Usd.Attribute,
+        )
+
+
+class DtdlRelationship(DtdlContent):
+    """Class to represent a DTDL relationship in the model repository"""
+
+    def __init__(self, data: dict):
+        super().__init__(data)
+
+    def to_usd_property_ui_entry(self):
+        """Converts the property to a UsdPropertyUiEntry object for the USD schema"""
+        return UsdPropertyUiEntry(
+            self.id,
+            "Relationships",
+            {
+                Sdf.PrimSpec.DocumentationKey: self.description,
+            },
+            Usd.Relationship,
+        )
+
+
+def dtdl_primitive_schema_to_usd_schema(dtdl_schema: str) -> str:
+    """
+    Converts a DTDL schema to a USD schema. Only the primitive types are converted.
+    As a fallback, it is assumed that the types align between DTDL and USD (e.g. "string" in DTDL
+    is also "string" in USD).
+    """
     match dtdl_schema:
         case "boolean":
             return "bool"
@@ -60,10 +122,17 @@ def dtdl_schema_to_usd_schema(dtdl_schema: str) -> str:
 
 
 class DtdlExtendedModelData:
+    """
+    Class to represent a DTDL model in the model repository. It contains all the model, all
+    properties (including those of the base models), telationships, ...
+    """
+
     def __init__(self, model: object, all_models: list[object]):
         self.model = model
         self.bases: list[str] = []
-        self.properties: list[DtdlProperty] = []  # todo add typing
+        self.properties: list[DtdlProperty] = []
+        self.telemetries: list[DtdlTelemetry] = []
+        self.relationships: list[DtdlRelationship] = []
         self._add_model_contents_recursive(model["@id"], all_models)
 
     def _add_model_contents_recursive(
@@ -75,7 +144,13 @@ class DtdlExtendedModelData:
                 model["contents"] = [model["contents"]]
             for c in model["contents"]:
                 if c["@type"] == "Property" or "Property" in c["@type"]:
-                    self.properties.append(DtdlProperty(c, model_id))
+                    self.properties.append(DtdlProperty(c))
+            for c in model["contents"]:
+                if c["@type"] == "Telemetry" or "Telemetry" in c["@type"]:
+                    self.telemetries.append(DtdlTelemetry(c))
+            for c in model["contents"]:
+                if c["@type"] == "Relationship" or "Relationship" in c["@type"]:
+                    self.relationships.append(DtdlRelationship(c))
         if "extends" in model:
             if isinstance(model["extends"], list):
                 for base in model["extends"]:

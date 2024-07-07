@@ -1,0 +1,48 @@
+{
+  "@context": [
+    "dtmi:dtdl:context;3",
+    "dtmi:dtdl:extension:quantitativeTypes;1"
+  ],
+  "@id": "dtmi:com:example:test;1",
+  "@type": "Interface",
+  "displayName": "test model 2",
+  "contents": [
+    {
+      "@type": "Property",
+      "name": "speed",
+      "displayName": "Speed",
+      "schema": "double"
+    },
+    {
+      "@type": [
+        "Property",
+        "Temperature"
+      ],
+      "name": "temperature",
+      "displayName": "Temperature",
+      "description": {
+        "en": "Temperature in Celsius"
+      },
+      "schema": "double",
+      "unit": "degreeCelsius"
+    },
+    {
+      "@type": "Property",
+      "name": "boolean",
+      "displayName": "Boolean",
+      "description": {
+        "en": "Test description for a boolean property"
+      },
+      "schema": "boolean"
+    },
+    {
+      "@type": "Relationship",
+      "name": "hasDevice",
+      "displayName": "has device",
+      "description": {
+        "en": "Test relationship"
+      },
+      "target": "dtmi:com:example:device;1"
+    }
+  ]
+}
